@@ -1,26 +1,46 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:provider/provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'catalogo.dart'; // Importando a tela do catálogo que vamos criar
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'core/app_theme.dart';
+import 'data/repositories/api_movie_repository.dart';
+import 'providers/movie_provider.dart';
+import 'auth/auth_gate.dart';
+
+// Variável global para acesso rápido
+final supabase = Supabase.instance.client;
 
 void main() async {
-  // Inicializa o Flutter
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Carrega o arquivo .env
   await dotenv.load(fileName: ".env");
 
-  // Inicializa o Supabase pegando as chaves do .env
   await Supabase.initialize(
     url: dotenv.env['SUPABASE_URL']!,
     anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
   );
 
-  runApp(const MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: Catalogo(),
-  ));
+  runApp(
+    ChangeNotifierProvider<MovieProvider>(
+      create: (_) => MovieProvider(
+        repository: ApiMovieRepository(),
+      )..loadMovies(),
+      child: const EnicApp(),
+    ),
+  );
 }
 
-// Instância global do cliente Supabase para acessar em qualquer lugar
-final supabase = Supabase.instance.client;
+class EnicApp extends StatelessWidget {
+  const EnicApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Enic',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.darkTheme,
+      home: const AuthGate(),
+    );
+  }
+}

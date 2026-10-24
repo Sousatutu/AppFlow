@@ -169,25 +169,25 @@ class Movie {
   }
 
   factory Movie.fromSupabase(Map<String, dynamic> json) {
-    return Movie(
-      id: json['id'],
-      tmdbId: json['tbmd_id'],
-      title: json['title'] ?? '',
-      type: json['type'] ?? 'Filme',
-      releaseDate: json['release_date'] ?? '',
-      gender: json['gender'] ?? '',
-      streaming: json['streaming'],
-      posterUrl: json['poster_url'],
-      synopsis: json['synopsis'],
-      criticRating: json['critic_rating']?.toDouble() ?? 0.0,
-      duration: json['duration'] ?? 0,
-      watched: json['watched'] ?? false,
-      userRating: json['user_rating']?.toDouble(),
-      status: json['status'],
-      hasReview: json['user_rating'] != null,
-      watchedAt: json['created_at'] != null
-          ? DateTime.parse(json['created_at'])
-          : null,
-    );
-  }
+  return Movie(
+    id: json['id'] as int?,
+    tmdbId: (json['tmdb_id'] ?? 0) as int,
+    title: json['title'] as String? ?? '',
+    type: json['type'] as String? ?? 'Filme',
+    releaseDate: json['release_date'] as String? ?? '',
+    gender: json['gender'] as String? ?? '',
+    streaming: json['streaming'] as String?,
+    posterUrl: json['poster_url'] as String?,
+    synopsis: json['synopsis'] as String?,
+    criticRating: (json['critic_rating'] as num?)?.toDouble() ?? 0.0,
+    duration: (json['duration'] as num?)?.toInt() ?? 0,
+    watched: json['watched'] as bool? ?? false,
+    userRating: (json['user_rating'] as num?)?.toDouble(),
+    status: json['status'] as String?,
+    hasReview: json['user_rating'] != null,
+    watchedAt: json['created_at'] != null
+        ? DateTime.tryParse(json['created_at'].toString())
+        : null,
+  );
+}
 }

@@ -31,7 +31,6 @@ class ApiMovieRepository implements MovieRepository {
 
   @override
   Future<List<Movie>> getWatchedMovies(String userId) async {
-    // Busca na SUA tabela 'movies' onde o usuário é o dono e watched = true
     final data = await _supabase
         .from('movies')
         .select()
@@ -42,7 +41,7 @@ class ApiMovieRepository implements MovieRepository {
   }
 
   @override
-  Future<Movie?> getMovieById(int tmdbId, {String type = 'Filme'}) async {
+  Future<Movie?> getMovieById(int tmdbId, {String type = 'Filme', String region = 'BR'}) async {
     final isTv = type.toLowerCase() == 'série' ||
         type.toLowerCase() == 'serie' ||
         type.toLowerCase() == 'tv';
@@ -74,8 +73,14 @@ class ApiMovieRepository implements MovieRepository {
   }
 
   @override
-  Future<void> saveOrUpdateMovieInDb(Movie movie, String userId,
-      {bool isWatched = false, double? userRating}) async {
+  Future<void> saveOrUpdateMovieInDb(
+    Movie movie, 
+    String userId, {
+    required bool isWatched,
+    required bool inWatchlist, 
+    double? userRating,
+
+    }) async {
     Movie fullMovie = movie;
 
     if (movie.watchProviders.isEmpty ||
@@ -99,11 +104,11 @@ class ApiMovieRepository implements MovieRepository {
         .from('movies')
         .select('id')
         .eq('user_id', userId)
-        .eq('tbmd_id', movie.tmdbId)
+        .eq('tmdb_id', movie.tmdbId)
         .maybeSingle();
 
     final movieData = {
-      'tbmd_id': fullMovie.tmdbId,
+      'tmdb_id': fullMovie.tmdbId,
       'title': fullMovie.title,
       'type': fullMovie.type,
       'release_date': fullMovie.releaseDate,
@@ -114,6 +119,7 @@ class ApiMovieRepository implements MovieRepository {
       'critic_rating': fullMovie.criticRating,
       'duration': fullMovie.duration,
       'watched': isWatched,
+      'in_watchlist': inWatchlist,
       if (userRating != null) 'user_rating': userRating,
       'user_id': userId,
       'updated_at': DateTime.now().toIso8601String(),
@@ -165,7 +171,7 @@ class ApiMovieRepository implements MovieRepository {
         .from('movies')
         .select()
         .eq('user_id', userId)
-        .eq('watched', false);
+        .eq('in_watchlist', true);
 
     return (data as List).map((item) => Movie.fromSupabase(item)).toList();
   }
@@ -176,8 +182,7 @@ class ApiMovieRepository implements MovieRepository {
         .from('movies')
         .delete()
         .eq('user_id', userId)
-        .eq('tbmd_id', tmdbId)
-        .eq('watched', false);
+        .eq('tmdb_id', tmdbId);
   }
 
   @override

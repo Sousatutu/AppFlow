@@ -3,6 +3,7 @@ import '../../core/app_theme.dart';
 import '../../auth/auth_service.dart';
 import 'register_screen.dart';
 import 'reset_password_screen.dart';
+import 'dart:math' as math;
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../main.dart';
@@ -103,7 +104,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 padding: const EdgeInsets.fromLTRB(24, 18, 24, 24),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
-                    minHeight: constraints.maxHeight - 42,
+                    minHeight: math.max(0.0, constraints.maxHeight - 42.0),
                   ),
                   child: Form(
                     key: _formKey,

@@ -14,16 +14,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   late TextEditingController _nameController;
   late TextEditingController _emailController;
+  bool _isLoading = false; // VARIÁVEL DECLARADA AQUI
 
   @override
   void initState() {
     super.initState();
-    // Puxa os dados reais do usuário logado no Supabase
     final user = Supabase.instance.client.auth.currentUser;
     final nome = user?.userMetadata?['full_name'] as String? ?? '';
     final email = user?.email ?? '';
 
-    // Inicializa os campos de texto com os dados do usuário
     _nameController = TextEditingController(text: nome);
     _emailController = TextEditingController(text: email);
   }
@@ -38,8 +37,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _saveChanges() async {
     if (!_formKey.currentState!.validate()) return;
 
+    setState(() => _isLoading = true);
+
     try {
-      // Atualiza o nome nas metadados do usuário no Supabase
+      // Atualiza os metadados do usuário no Supabase Auth (persiste entre logins)
       await Supabase.instance.client.auth.updateUser(
         UserAttributes(
           data: {'full_name': _nameController.text.trim()},
@@ -47,32 +48,45 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       );
 
       if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Perfil atualizado com sucesso!'),
+            backgroundColor: Colors.green,
+          ),
+        );
         Navigator.pop(context, true);
       }
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erro ao atualizar perfil: $error')),
+          SnackBar(
+            content: Text('Erro ao atualizar perfil: $error'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Pega a inicial do nome para colocar no avatar
     final inicial = _nameController.text.isNotEmpty
         ? _nameController.text[0].toUpperCase()
         : 'U';
 
     return Scaffold(
       appBar: AppBar(
-        actionsPadding: EdgeInsets.fromLTRB(10, 12, 20, 24),
-        title: const Text('Editar perfil',
-            style: const TextStyle(
-              fontSize: 21,
-              fontWeight: FontWeight.bold,
-            )),
+        title: const Text(
+          'Editar perfil',
+          style: TextStyle(
+            fontSize: 21,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         leading: IconButton(
           onPressed: () => Navigator.pop(context),
           icon: const Icon(Icons.arrow_back),
@@ -124,36 +138,38 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             const SizedBox(height: 8),
             TextFormField(
               controller: _emailController,
+              enabled: false, // E-mail é gerenciado pelo Auth do Supabase
               keyboardType: TextInputType.emailAddress,
               decoration: const InputDecoration(
                 hintText: 'Digite seu e-mail',
                 prefixIcon: Icon(Icons.mail_outline),
               ),
-              validator: (value) {
-                if (value == null ||
-                    !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
-                        .hasMatch(value.trim())) {
-                  return 'Digite um e-mail válido.';
-                }
-                return null;
-              },
             ),
             const SizedBox(height: 32),
             SizedBox(
               height: 52,
               child: FilledButton(
-                onPressed: _saveChanges,
-                child: const Text(
-                  'SALVAR ALTERAÇÕES',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
+                onPressed: _isLoading ? null : _saveChanges,
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.black,
+                        ),
+                      )
+                    : const Text(
+                        'SALVAR ALTERAÇÕES',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
               ),
             ),
             const SizedBox(height: 12),
             SizedBox(
               height: 48,
               child: OutlinedButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: _isLoading ? null : () => Navigator.pop(context),
                 child: const Text('CANCELAR'),
               ),
             ),

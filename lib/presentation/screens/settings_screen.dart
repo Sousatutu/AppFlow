@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../core/app_theme.dart';
 import '../../auth/auth_service.dart';
-import 'package:package_info_plus/package_info_plus.dart';
+import '../../providers/movie_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -12,12 +14,212 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _notifications = true;
-  String _region = 'Brasil';
-  String _services = 'Netflix, Max, Prime Video';
   bool _signingOut = false;
+
+  static const List<String> _tmdbProviders = [
+    'Netflix',
+    'Amazon Prime Video',
+    'Max',
+    'Disney+',
+    'Apple TV+',
+    'Apple TV',
+    'Globoplay',
+    'Paramount+',
+    'Star+',
+    'Telecine',
+    'Claro tv+',
+    'Pluto TV',
+    'Crunchyroll',
+    'MUBI',
+    'Lionsgate+',
+    'Looke',
+    'Mercado Play',
+    'Google Play Movies',
+    'Oldflix',
+    'Reserva Imovision',
+    'Belas Artes à La Carte',
+  ];
+
+  void _showServicesModal() {
+    final provider = context.read<MovieProvider>();
+    List<String> tempSelected = List.from(provider.userSubscriptions);
+    String searchQuery = '';
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (modalContext) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final filteredList = _tmdbProviders.where((service) {
+              return service
+                  .toLowerCase()
+                  .contains(searchQuery.trim().toLowerCase());
+            }).toList();
+
+            return SafeArea(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom: MediaQuery.of(context).viewInsets.bottom,
+                  left: 20,
+                  right: 20,
+                  top: 16,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: AppTheme.stroke,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Meus Serviços Assinados',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Selecione as plataformas que você assina para personalizar buscas e destaques.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      onChanged: (value) {
+                        setModalState(() => searchQuery = value);
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Buscar serviço...',
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: AppTheme.accent,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 10,
+                          horizontal: 14,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.of(context).size.height * 0.42,
+                      ),
+                      child: filteredList.isEmpty
+                          ? const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(24.0),
+                                child: Text(
+                                  'Nenhum serviço encontrado.',
+                                  style: TextStyle(color: AppTheme.textSecondary),
+                                ),
+                              ),
+                            )
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: filteredList.length,
+                              itemBuilder: (context, index) {
+                                final service = filteredList[index];
+                                final checked = tempSelected.contains(service);
+
+                                return CheckboxListTile(
+                                  value: checked,
+                                  activeColor: AppTheme.accent,
+                                  checkColor: const Color(0xFF071018),
+                                  title: Text(
+                                    service,
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  onChanged: (isVal) {
+                                    setModalState(() {
+                                      if (isVal == true) {
+                                        tempSelected.add(service);
+                                      } else {
+                                        tempSelected.remove(service);
+                                      }
+                                    });
+                                  },
+                                );
+                              },
+                            ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: FilledButton(
+                        onPressed: () async {
+                          await provider.updateUserSubscriptions(tempSelected);
+                          if (modalContext.mounted) {
+                            Navigator.pop(modalContext);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Assinaturas salvas com sucesso!'),
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        },
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppTheme.accent,
+                          foregroundColor: const Color(0xFF071018),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(28),
+                          ),
+                        ),
+                        child: const Text(
+                          'SALVAR ASSINATURAS',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<MovieProvider>();
+    final subscriptions = provider.userSubscriptions;
+    final userRegion = provider.userRegion;
+
+    final regionSubtitle = userRegion == 'US'
+        ? 'Exibir onde passa nos Estados Unidos (US)'
+        : 'Exibir onde passa no Brasil (BR)';
+
+    final regionLabel = userRegion == 'US' ? '🇺🇸 EUA' : '🇧🇷 Brasil';
+
+    final subtitleText = subscriptions.isEmpty
+        ? 'Nenhuma selecionada'
+        : '${subscriptions.length} ativa(s): ${subscriptions.join(', ')}';
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -35,7 +237,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
         children: [
-          // CONTA E SEGURANÇA
           _sectionTitle('CONTA & SEGURANÇA'),
           const SizedBox(height: 10),
 
@@ -85,8 +286,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 onTap: () {
-                  _showMessage(
-                    'A sincronização está ativa na sua conta.',
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('A sincronização está ativa na sua conta.'),
+                    ),
                   );
                 },
               ),
@@ -95,7 +298,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 22),
 
-          // PREFERÊNCIAS DE STREAMING
           _sectionTitle('PREFERÊNCIAS DE STREAMING'),
           const SizedBox(height: 10),
 
@@ -104,8 +306,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _navigationTile(
                 icon: Icons.live_tv_outlined,
                 title: 'Meus Serviços Assinados',
-                subtitle: 'Netflix, Max, Prime Video (3 ativos)',
-                onTap: _showServicesDialog,
+                subtitle: subtitleText,
+                onTap: _showServicesModal,
               ),
               _divider(),
               ListTile(
@@ -120,26 +322,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                subtitle: const Text(
-                  'Exibir onde passa no Brasil (BR)',
-                  style: TextStyle(fontSize: 10),
+                subtitle: Text(
+                  regionSubtitle,
+                  style: const TextStyle(fontSize: 10),
                 ),
                 trailing: Text(
-                  _region == 'Brasil' ? '🇧🇷 Brasil' : '🇺🇸 EUA',
+                  regionLabel,
                   style: const TextStyle(
                     color: AppTheme.accent,
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                onTap: _showRegionDialog,
+                onTap: () => _showRegionDialog(userRegion),
               ),
             ],
           ),
 
           const SizedBox(height: 22),
 
-          // APLICATIVO
           _sectionTitle('APLICATIVO'),
           const SizedBox(height: 10),
 
@@ -180,7 +381,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 24),
 
-          // SAIR DA CONTA
           SizedBox(
             height: 48,
             child: OutlinedButton.icon(
@@ -237,12 +437,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _settingsCard({required List<Widget> children}) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF151E29),
+    return Material(
+      color: const Color(0xFF151E29),
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(17),
-        border: Border.all(
-          color: const Color(0xFF202D3D),
+        side: const BorderSide(
+          color: Color(0xFF202D3D),
         ),
       ),
       child: Column(
@@ -281,6 +482,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       subtitle: Text(
         subtitle,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: const TextStyle(
           color: AppTheme.textSecondary,
           fontSize: 10,
@@ -294,44 +497,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showServicesDialog() {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Meus Serviços Assinados'),
-          content: TextField(
-            controller: TextEditingController(text: _services),
-            decoration: const InputDecoration(
-              hintText: 'Netflix, Max, Prime Video',
-              labelText: 'Serviços',
-            ),
-            onChanged: (value) {
-              _services = value;
-            },
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Fechar'),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {});
-                Navigator.pop(dialogContext);
-                _showMessage(
-                  'Preferência atualizada nesta sessão.',
-                );
-              },
-              child: const Text('Salvar'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showRegionDialog() {
+  void _showRegionDialog(String currentRegion) {
     showDialog<void>(
       context: context,
       builder: (dialogContext) {
@@ -341,30 +507,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               RadioListTile<String>(
-                title: const Text('Brasil'),
-                value: 'Brasil',
-                groupValue: _region,
+                title: const Text('Brasil (BR)'),
+                value: 'BR',
+                groupValue: currentRegion,
                 activeColor: AppTheme.accent,
-                onChanged: (value) {
+                onChanged: (value) async {
                   if (value != null) {
-                    setState(() {
-                      _region = value;
-                    });
                     Navigator.pop(dialogContext);
+                    await context.read<MovieProvider>().updateUserRegion(value);
                   }
                 },
               ),
               RadioListTile<String>(
-                title: const Text('Estados Unidos'),
-                value: 'EUA',
-                groupValue: _region,
+                title: const Text('Estados Unidos (US)'),
+                value: 'US',
+                groupValue: currentRegion,
                 activeColor: AppTheme.accent,
-                onChanged: (value) {
+                onChanged: (value) async {
                   if (value != null) {
-                    setState(() {
-                      _region = value;
-                    });
                     Navigator.pop(dialogContext);
+                    await context.read<MovieProvider>().updateUserRegion(value);
                   }
                 },
               ),
@@ -388,8 +550,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return AlertDialog(
           title: const Text('Sair da conta?'),
           content: const Text(
-            'Você precisará entrar novamente para acessar suas listas '
-            'e avaliações.',
+            'Você precisará entrar novamente para acessar suas listas e avaliações.',
           ),
           actions: [
             TextButton(
@@ -414,20 +575,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _signOut() async {
     setState(() => _signingOut = true);
-
     try {
       await AuthService.signOut();
     } catch (error) {
       if (!mounted) return;
-
       setState(() => _signingOut = false);
-      _showMessage(AuthService.friendlyError(error));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AuthService.friendlyError(error))),
+      );
     }
-  }
-
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
   }
 }

@@ -589,6 +589,10 @@ class _PopularMovieCard extends StatelessWidget {
 // CARD DOS MAIS BEM AVALIADOS
 // ======================================================
 
+// ======================================================
+// CARD DOS MAIS BEM AVALIADOS (CORRIGIDO PARA EVITAR OVERFLOW)
+// ======================================================
+
 class _TopRatedMovieCard extends StatelessWidget {
   final Movie movie;
   final VoidCallback onTap;
@@ -661,11 +665,16 @@ class _TopRatedMovieCard extends StatelessWidget {
                           color: AppTheme.starGold,
                           size: 16,
                         ),
-                        Text(
-                          ' ${movie.rating} · ${movie.streamingProvider}',
-                          style: const TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 10,
+                        // EXPANDED E ELLIPSIS ADICIONADOS PARA EVITAR O OVERFLOW
+                        Expanded(
+                          child: Text(
+                            ' ${movie.rating.toStringAsFixed(1)} · ${movie.streamingProvider}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 10,
+                            ),
                           ),
                         ),
                       ],
@@ -697,7 +706,7 @@ class _TopRatedMovieCard extends StatelessWidget {
 }
 
 // ======================================================
-// DETALHES DO FILME (COM SINOPSE E ONDE ASSISTIR REAIS)
+// DETALHES DO FILME (COM SINOPSE, ONDE ASSISTIR E PRIORIZAÇÃO DE ASSINATURAS)
 // ======================================================
 
 class MovieDetailScreen extends StatefulWidget {
@@ -886,7 +895,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
 
                   const SizedBox(height: 22),
 
-                  // ONDE ASSISTIR NO BRASIL
+                  // ONDE ASSISTIR NO BRASIL (COM PRIORIDADE PARA OS SERVIÇOS ASSINADOS)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: const [
@@ -922,23 +931,55 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                       ),
                     )
                   else if (movie.watchProviders.isEmpty)
-                    _streamingChip('Indisponível')
+                    _streamingChip('Indisponível', isSubscribed: false)
                   else
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: movie.watchProviders
-                            .map((provider) => Padding(
-                                  padding: const EdgeInsets.only(right: 8),
-                                  child: _streamingChip(provider),
-                                ))
-                            .toList(),
-                      ),
+                    Builder(
+                      builder: (context) {
+                        final userSubs =
+                            context.watch<MovieProvider>().userSubscriptions;
+
+                        // Reordena para que os serviços que o usuário assina fiquem no topo/início
+                        final sortedProviders =
+                            List<String>.from(movie.watchProviders);
+                        sortedProviders.sort((a, b) {
+                          final aIsSub = userSubs.any((s) =>
+                              a.toLowerCase().contains(s.toLowerCase()) ||
+                              s.toLowerCase().contains(a.toLowerCase()));
+                          final bIsSub = userSubs.any((s) =>
+                              b.toLowerCase().contains(s.toLowerCase()) ||
+                              s.toLowerCase().contains(b.toLowerCase()));
+                          if (aIsSub && !bIsSub) return -1;
+                          if (!aIsSub && bIsSub) return 1;
+                          return 0;
+                        });
+
+                        return SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            children: sortedProviders.map((provider) {
+                              final isSubscribed = userSubs.any((s) =>
+                                  provider
+                                      .toLowerCase()
+                                      .contains(s.toLowerCase()) ||
+                                  s.toLowerCase().contains(
+                                      provider.toLowerCase()));
+
+                              return Padding(
+                                padding: const EdgeInsets.only(right: 8),
+                                child: _streamingChip(
+                                  provider,
+                                  isSubscribed: isSubscribed,
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        );
+                      },
                     ),
 
                   const SizedBox(height: 18),
 
-                  // NOTA DO TMDB
+                  // NOTA DO TMDB E SUA AVALIAÇÃO
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(12),
@@ -1020,8 +1061,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                                     );
                                   }
 
-                                  final stars =
-                                      userRating.round().clamp(0, 5).toInt();
+                                  final stars = userRating.isInfinite
+                                      ? userRating.round().clamp(0, 5).toInt()
+                                      : 0;
                                   final filled = '★' * stars;
                                   final empty = '☆' * (5 - stars);
 
@@ -1170,33 +1212,37 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     );
   }
 
-  Widget _streamingChip(String provider) {
+  Widget _streamingChip(String provider, {bool isSubscribed = false}) {
     return Container(
       padding: const EdgeInsets.symmetric(
         horizontal: 13,
         vertical: 9,
       ),
       decoration: BoxDecoration(
-        color: const Color(0xFF151E29),
+        color: isSubscribed
+            ? AppTheme.accent.withValues(alpha: 0.15)
+            : const Color(0xFF151E29),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: const Color(0xFF26364A),
+          color: isSubscribed ? AppTheme.accent : const Color(0xFF26364A),
+          width: isSubscribed ? 1.5 : 1.0,
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.play_circle_outline,
+          Icon(
+            isSubscribed ? Icons.check_circle : Icons.play_circle_outline,
             color: AppTheme.accent,
             size: 16,
           ),
           const SizedBox(width: 7),
           Text(
             provider,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
-              fontWeight: FontWeight.w600,
+              fontWeight: isSubscribed ? FontWeight.bold : FontWeight.w600,
+              color: isSubscribed ? Colors.white : AppTheme.textPrimary,
             ),
           ),
         ],
@@ -1232,7 +1278,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
 }
 
 // ======================================================
-// BUSCAR — INTEGRADO À API DO TMDB
+// BUSCAR
 // ======================================================
 
 class _SearchTab extends StatefulWidget {
@@ -1257,6 +1303,7 @@ class _SearchTabState extends State<_SearchTab> {
     'Filmes',
     'Séries',
     'Diretores',
+    'Assinaturas',
   ];
 
   @override
@@ -1265,12 +1312,23 @@ class _SearchTabState extends State<_SearchTab> {
     super.dispose();
   }
 
+  String _normalize(String text) {
+    return text
+        .toLowerCase()
+        .replaceAll(RegExp(r'[áàãâä]'), 'a')
+        .replaceAll(RegExp(r'[éèêë]'), 'e')
+        .replaceAll(RegExp(r'[íìîï]'), 'i')
+        .replaceAll(RegExp(r'[óòõôö]'), 'o')
+        .replaceAll(RegExp(r'[úùûü]'), 'u')
+        .replaceAll(RegExp(r'[ç]'), 'c')
+        .replaceAll(RegExp(r'[^a-z0-9]'), '');
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<MovieProvider>();
+    final userSubs = provider.userSubscriptions;
 
-    // Se o campo de busca estiver vazio, exibe a lista de populares.
-    // Se houver busca, exibe os resultados retornados pela API do TMDB.
     final listaBase =
         _query.trim().isEmpty ? provider.movies : provider.searchResults;
 
@@ -1280,387 +1338,149 @@ class _SearchTabState extends State<_SearchTab> {
       } else if (_filtroSelecionado == 'Séries') {
         return movie.type == 'Série';
       } else if (_filtroSelecionado == 'Diretores') {
-        if (_query.trim().isEmpty) {
-          return movie.director != 'Indisponível';
+        if (_query.trim().isEmpty) return movie.director != 'Indisponível';
+        return _normalize(movie.director).contains(_normalize(_query)) ||
+            _normalize(movie.title).contains(_normalize(_query));
+      } else if (_filtroSelecionado == 'Assinaturas') {
+        if (userSubs.isEmpty) return false;
+
+        // Coleta todas as plataformas disponíveis para este título
+        final List<String> moviePlatforms = [];
+        if (movie.streamingProvider.isNotEmpty &&
+            movie.streamingProvider != 'Indisponível') {
+          moviePlatforms.add(movie.streamingProvider);
         }
-        return movie.director
-                .toLowerCase()
-                .contains(_query.trim().toLowerCase()) ||
-            movie.title.toLowerCase().contains(_query.trim().toLowerCase());
+        moviePlatforms.addAll(movie.watchProviders);
+
+        // Se o título não está em nenhum serviço conhecido, oculta
+        if (moviePlatforms.isEmpty) return false;
+
+        // Verifica se pelo menos uma das plataformas bate com as assinaturas do usuário
+        return moviePlatforms.any((platform) {
+          final normPlatform = _normalize(platform);
+          return userSubs.any((sub) {
+            final normSub = _normalize(sub);
+            return normPlatform.contains(normSub) ||
+                normSub.contains(normPlatform);
+          });
+        });
       }
       return true;
     }).toList();
 
     return Column(
       children: [
-        // CABEÇALHO
+        // BARRA DE PESQUISA
         Padding(
-          padding: const EdgeInsets.fromLTRB(10, 12, 20, 24),
-          child: Row(
-            children: [
-              IconButton(
-                onPressed: widget.onBack,
-                icon: const Icon(
-                  Icons.arrow_back,
-                  color: Colors.white,
-                ),
-                tooltip: 'Voltar para Home',
-              ),
-              const SizedBox(width: 15),
-              const Text(
-                'Buscar',
-                style: TextStyle(
-                  fontSize: 21,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        // CAMPO DE PESQUISA
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: TextField(
             controller: _controller,
-            onChanged: (value) {
-              setState(() {
-                _query = value;
-              });
-              // Chama a busca real na API do TMDB através do MovieProvider
-              context.read<MovieProvider>().searchMovies(value);
+            onChanged: (val) {
+              setState(() => _query = val);
+              provider.searchMovies(val);
             },
             decoration: InputDecoration(
-              hintText: 'Buscar filmes, séries no TMDB...',
+              hintText: 'Buscar filmes, séries ou diretores...',
               prefixIcon: const Icon(
-                Icons.search,
-                color: AppTheme.accent,
-              ),
+                Icons.search, 
+                color: AppTheme.accent),
               suffixIcon: _query.isNotEmpty
                   ? IconButton(
+                      icon: const Icon(Icons.clear, size: 20),
                       onPressed: () {
                         _controller.clear();
-                        setState(() {
-                          _query = '';
-                        });
-                        // Limpa os resultados de pesquisa
-                        context.read<MovieProvider>().searchMovies('');
+                        setState(() => _query = '');
+                        provider.searchMovies('');
                       },
-                      icon: const Icon(Icons.close),
                     )
                   : null,
               filled: true,
-              fillColor: AppTheme.surface,
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(
-                  color: AppTheme.stroke,
-                ),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(
-                  color: AppTheme.accent,
-                  width: 1.5,
-                ),
+              fillColor: const Color(0xFF151E29),
+              contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+                borderSide: BorderSide.none,
               ),
             ),
           ),
         ),
 
-        const SizedBox(height: 18),
-
-        // FILTROS
+        // CHIPS DE FILTRO (ROLAGEM HORIZONTAL)
         SizedBox(
-          height: 42,
-          child: ListView.separated(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+          height: 50,
+          child: ListView.builder(
             scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: _filtros.length,
-            separatorBuilder: (_, __) => const SizedBox(width: 8),
             itemBuilder: (context, index) {
               final filtro = _filtros[index];
-              final selecionado = filtro == _filtroSelecionado;
+              final isSelected = _filtroSelecionado == filtro;
 
-              return ChoiceChip(
-                label: Text(filtro),
-                selected: selecionado,
-                onSelected: (_) {
-                  setState(() {
-                    _filtroSelecionado = filtro;
-                  });
-                },
-                selectedColor: AppTheme.accent,
-                backgroundColor: AppTheme.surface,
-                labelStyle: TextStyle(
-                  color: selecionado
-                      ? const Color(0xFF071018)
-                      : AppTheme.textSecondary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-                side: BorderSide(
-                  color: selecionado ? AppTheme.accent : AppTheme.stroke,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(22),
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(
+                    filtro,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isSelected ? Colors.black : AppTheme.textPrimary,
+                    ),
+                  ),
+                  selected: isSelected,
+                  selectedColor: AppTheme.accent,
+                  backgroundColor: const Color(0xFF151E29),
+                  showCheckmark: false,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20),
+                    side: BorderSide(
+                      color: isSelected
+                          ? AppTheme.accent
+                          : const Color(0xFF26364A),
+                    ),
+                  ),
+                  onSelected: (selected) {
+                    if (selected) {
+                      setState(() => _filtroSelecionado = filtro);
+                    }
+                  },
                 ),
               );
             },
           ),
         ),
 
-        const SizedBox(height: 20),
+        const SizedBox(height: 8),
 
-        // CONTADOR DE RESULTADOS
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'RESULTADOS ENCONTRADOS',
-                style: TextStyle(
-                  color: AppTheme.textSecondary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
-              ),
-              Text(
-                '${resultados.length} títulos',
-                style: const TextStyle(
-                  color: AppTheme.accent,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 12),
-
-        // RESULTADOS / STATUS DE CARREGAMENTO
+        // LISTA DE RESULTADOS
         Expanded(
           child: provider.isLoading
               ? const Center(
-                  child: CircularProgressIndicator(
-                    color: AppTheme.accent,
-                  ),
+                  child: CircularProgressIndicator(color: AppTheme.accent),
                 )
               : resultados.isEmpty
                   ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.search_off,
-                              size: 48,
-                              color: AppTheme.textSecondary,
-                            ),
-                            SizedBox(height: 12),
-                            Text(
-                              'Nenhum título encontrado',
-                              style: TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
+                      child: Text(
+                        'Nenhum título encontrado.',
+                        style: TextStyle(color: AppTheme.textSecondary),
                       ),
                     )
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+                  : GridView.builder(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        childAspectRatio: 0.65,
+                        crossAxisSpacing: 10,
+                        mainAxisSpacing: 10,
+                      ),
                       itemCount: resultados.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
-                        final movie = resultados[index];
-                        final salvo = provider.isInWatchlist(movie.tmdbId);
-
-                        return Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: AppTheme.surface,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: AppTheme.stroke,
-                            ),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // PÔSTER
-                              GestureDetector(
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          MovieDetailScreen(movie: movie),
-                                    ),
-                                  );
-                                },
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: Image.network(
-                                    movie.posterUrl ?? '',
-                                    width: 92,
-                                    height: 132,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, __, ___) {
-                                      return Container(
-                                        width: 92,
-                                        height: 132,
-                                        color: AppTheme.background,
-                                        child: const Icon(
-                                          Icons.movie_outlined,
-                                          color: AppTheme.textSecondary,
-                                          size: 32,
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(width: 12),
-
-                              // INFORMAÇÕES
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      movie.title,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-
-                                    const SizedBox(height: 5),
-
-                                    Text(
-                                      '${movie.year} • ${movie.runtime}',
-                                      style: const TextStyle(
-                                        color: AppTheme.textSecondary,
-                                        fontSize: 11,
-                                      ),
-                                    ),
-
-                                    const SizedBox(height: 5),
-
-                                    Text(
-                                      movie.director,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                        color: AppTheme.textSecondary,
-                                        fontSize: 11,
-                                      ),
-                                    ),
-
-                                    const SizedBox(height: 7),
-
-                                    Row(
-                                      children: [
-                                        const Icon(
-                                          Icons.star_rounded,
-                                          color: AppTheme.starGold,
-                                          size: 17,
-                                        ),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          movie.rating.toStringAsFixed(1),
-                                          style: const TextStyle(
-                                            color: AppTheme.starGold,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-
-                                    const SizedBox(height: 7),
-
-                                    Wrap(
-                                      spacing: 5,
-                                      runSpacing: 4,
-                                      children: movie.genres
-                                          .take(2)
-                                          .map(
-                                            (genre) => Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                horizontal: 7,
-                                                vertical: 4,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: AppTheme.background,
-                                                borderRadius:
-                                                    BorderRadius.circular(6),
-                                              ),
-                                              child: Text(
-                                                genre,
-                                                style: const TextStyle(
-                                                  color: AppTheme.textSecondary,
-                                                  fontSize: 9,
-                                                ),
-                                              ),
-                                            ),
-                                          )
-                                          .toList(),
-                                    ),
-
-                                    const SizedBox(height: 9),
-
-                                    // BOTÃO SALVAR
-                                    SizedBox(
-                                      height: 32,
-                                      child: OutlinedButton(
-                                        onPressed: () {
-                                          provider.toggleWatchlist(movie);
-                                        },
-                                        style: OutlinedButton.styleFrom(
-                                          foregroundColor: salvo
-                                              ? const Color(0xFF071018)
-                                              : AppTheme.accent,
-                                          backgroundColor: salvo
-                                              ? AppTheme.accent
-                                              : Colors.transparent,
-                                          side: const BorderSide(
-                                            color: AppTheme.accent,
-                                          ),
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                          ),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius:
-                                                BorderRadius.circular(8),
-                                          ),
-                                        ),
-                                        child: Text(
-                                          salvo ? '✓ NA LISTA' : '+ SALVAR',
-                                          style: const TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
+                        return MovieCard(movie: resultados[index]);
                       },
                     ),
         ),
@@ -1668,6 +1488,94 @@ class _SearchTabState extends State<_SearchTab> {
     );
   }
 }
+
+// ======================================================
+// MOVIE CARD (Utilizado na grade de busca)
+// ======================================================
+
+class MovieCard extends StatelessWidget {
+  final Movie movie;
+
+  const MovieCard({
+    super.key,
+    required this.movie,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MovieDetailScreen(movie: movie),
+          ),
+        );
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: AppTheme.surface,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  movie.posterUrl ?? '',
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: AppTheme.accent,
+                        strokeWidth: 2,
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Center(
+                      child: Icon(
+                        Icons.movie_outlined,
+                        color: AppTheme.textSecondary,
+                        size: 30,
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            movie.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '${movie.year}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 10,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ======================================================
 // ASSISTIDOS
 // ======================================================
@@ -1827,17 +1735,23 @@ class _WatchedTabState extends State<_WatchedTab> {
                 Icons.search,
                 color: AppTheme.accent,
               ),
-              suffixIcon: IconButton(
+              suffixIcon: _query.isNotEmpty
+              ? IconButton(
                 onPressed: () {
                   _searchController.clear();
                   setState(() {
                     _query = '';
                   });
                 },
-                icon: const Icon(Icons.close),
-              ),
+                icon: const Icon(Icons.clear, size: 20),
+              )
+              : null,
+              filled: true,
+              fillColor: const Color(0xFF151E29),
+              contentPadding: const EdgeInsets.symmetric(vertical: 0),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(30),
+                borderSide: BorderSide.none
               ),
             ),
           ),
@@ -2248,7 +2162,7 @@ class _StatusTab extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    '$totalFilmes / 100 filmes',
+                    '$totalFilmes / ${movieProvider.watchlistMovies.length} filmes',
                     style: const TextStyle(
                       color: Color(0xFF00D9E8),
                       fontWeight: FontWeight.bold,
@@ -2261,7 +2175,9 @@ class _StatusTab extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: LinearProgressIndicator(
-                  value: (totalFilmes / 100).clamp(0.0, 1.0),
+                  value: movieProvider.watchlistMovies.isNotEmpty
+                    ? (totalFilmes / movieProvider.watchlistMovies.length).clamp(0.0, 1.0)
+                    : 0.0,
                   minHeight: 12,
                   backgroundColor: const Color(0xFF252F3E),
                   valueColor: const AlwaysStoppedAnimation<Color>(
@@ -2271,7 +2187,9 @@ class _StatusTab extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Você já completou ${(totalFilmes / 100 * 100).round()}% da sua meta de 100 filmes!',
+                'Você já completou ${totalFilmes > 0 && movieProvider.watchlistMovies.isNotEmpty
+                ? ((totalFilmes / movieProvider.watchlistMovies.length)* 100).round()
+                : 0.0}% da sua meta de ${movieProvider.watchlistMovies.length} filmes!',
                 style: const TextStyle(
                   fontSize: 11,
                   color: Color(0xFF8796A9),

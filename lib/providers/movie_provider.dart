@@ -9,10 +9,12 @@ class MovieProvider extends ChangeNotifier {
 
   MovieProvider({required this.repository});
 
-  List<Movie> _movies = []; // Filmes em Alta (TMDB)
-  List<Movie> _watchedMovies = []; // Assistidos (Supabase)
-  List<Movie> _watchlistMovies = []; // Quero Assistir / Favoritos (Supabase)
-  List<Movie> _searchResults = []; // Resultados da Busca
+  List<Movie> _movies = [];
+  List<Movie> _watchedMovies = [];
+  List<Movie> _watchlistMovies = [];
+  List<Movie> _searchResults = [];
+  List<String> _userSubscriptions = ['Netflix', 'Amazon Prime Video', 'Max'];
+  String _userRegion = 'BR';
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -21,6 +23,8 @@ class MovieProvider extends ChangeNotifier {
   List<Movie> get watchedMovies => List.unmodifiable(_watchedMovies);
   List<Movie> get watchlistMovies => List.unmodifiable(_watchlistMovies);
   List<Movie> get searchResults => List.unmodifiable(_searchResults);
+  List<String> get userSubscriptions => List.unmodifiable(_userSubscriptions);
+  String get userRegion => _userRegion;
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
@@ -32,57 +36,111 @@ class MovieProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // 1. Busca os filmes populares no TMDB
-      _movies = await repository.getTrendingMovies();
-
-      // 2. Busca os filmes assistidos e favoritos salvos no Supabase
       if (_userId != null) {
+        final rawSubs =
+            _supabase.auth.currentUser?.userMetadata?['subscriptions'];
+        if (rawSubs is List) {
+          _userSubscriptions = List<String>.from(rawSubs);
+        }
+
+        final rawRegion =
+            _supabase.auth.currentUser?.userMetadata?['region'];
+        if (rawRegion is String && rawRegion.isNotEmpty) {
+          _userRegion = rawRegion;
+        }
+
         _watchedMovies = await repository.getWatchedMovies(_userId!);
         _watchlistMovies = await repository.getWatchlistMovies(_userId!);
       }
-    } catch (error) {
-      _errorMessage = 'Erro de conexão. Verifique sua internet.';
+
+      final popular = await repository.getTrendingMovies();
+
+      _movies = await Future.wait(
+        popular.map((movie) async {
+          final full = await repository.getMovieById(
+            movie.tmdbId,
+            type: movie.type,
+            region: _userRegion,
+          );
+          return full ?? movie;
+        }),
+      );
+    } catch (e) {
+      _errorMessage = 'Falha ao carregar dados: $e';
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  // ======================================================
-  // GERENCIAMENTO DE ASSISTIDOS
-  // ======================================================
+  Future<void> updateUserSubscriptions(List<String> subscriptions) async {
+    _userSubscriptions = List<String>.from(subscriptions);
+    notifyListeners();
+
+    try {
+      await _supabase.auth.updateUser(
+        UserAttributes(
+          data: {'subscriptions': _userSubscriptions},
+        ),
+      );
+    } catch (e) {
+      debugPrint('Erro ao salvar assinaturas no Supabase: $e');
+    }
+  }
+
+  Future<void> updateUserRegion(String regionCode) async {
+    _userRegion = regionCode;
+    notifyListeners();
+
+    try {
+      await _supabase.auth.updateUser(
+        UserAttributes(
+          data: {'region': _userRegion},
+        ),
+      );
+      await loadMovies();
+    } catch (e) {
+      debugPrint('Erro ao salvar região no Supabase: $e');
+    }
+  }
 
   bool isWatched(int tmdbId) {
     return _watchedMovies.any((m) => m.tmdbId == tmdbId);
   }
 
   Future<void> toggleWatched(Movie movie) async {
-    if (_userId == null) return;
+    final userId = _userId;
+    if (userId == null) return;
 
     final currentlyWatched = isWatched(movie.tmdbId);
 
-    // Atualiza otimisticamente a tela
     if (currentlyWatched) {
       _watchedMovies.removeWhere((m) => m.tmdbId == movie.tmdbId);
+      notifyListeners();
+
+      // Atualizado: em vez de removeFromWatchlist, atualiza o status de assistido para false
+      // e preserva o status da watchlist.
+      await repository.saveOrUpdateMovieInDb(
+        movie,
+        userId,
+        isWatched: false,
+        inWatchlist: isInWatchlist(movie.tmdbId),
+      );
     } else {
       _watchedMovies.add(movie);
+      notifyListeners();
+
+      // Atualizado: salva mantendo o status independente da watchlist.
+      await repository.saveOrUpdateMovieInDb(
+        movie,
+        userId,
+        isWatched: true,
+        inWatchlist: isInWatchlist(movie.tmdbId),
+      );
     }
-    notifyListeners();
 
-    // Envia para o Banco de Dados (Supabase)
-    await repository.saveOrUpdateMovieInDb(
-      movie,
-      _userId!,
-      isWatched: !currentlyWatched,
-    );
-
-    // Recarrega os dados reais
-    loadMovies();
+    await loadMovies();
   }
-
-  // ======================================================
-  // AVALIAÇÃO DO USUÁRIO
-  // ======================================================
 
   Movie? watchedMovieById(int tmdbId) {
     for (final movie in _watchedMovies) {
@@ -114,10 +172,12 @@ class MovieProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // Atualizado: Envia os estados de ambas as listas
       await repository.saveOrUpdateMovieInDb(
         movie,
         userId,
         isWatched: true,
+        inWatchlist: isInWatchlist(movie.tmdbId),
         userRating: rating,
       );
     } catch (error, stackTrace) {
@@ -139,43 +199,74 @@ class MovieProvider extends ChangeNotifier {
     try {
       _watchedMovies = await repository.getWatchedMovies(userId);
       notifyListeners();
-    } catch (error) {
-      // Mantém a lista otimista em caso de erro temporário
-    }
+    } catch (_) {}
   }
-
-  // ======================================================
-  // GERENCIAMENTO DE FAVORITOS / WATCHLIST (QUERO VER)
-  // ======================================================
 
   bool isInWatchlist(int tmdbId) {
     return _watchlistMovies.any((m) => m.tmdbId == tmdbId);
   }
 
-  Future<void> toggleWatchlist(Movie movie) async {
+  Future<bool> toggleWatchlist(Movie movie) async {
     final userId = _userId;
-    if (userId == null) return;
+    if (userId == null) return false;
 
+    final previous = List<Movie>.of(_watchlistMovies);
     final inList = isInWatchlist(movie.tmdbId);
 
     if (inList) {
-      _watchlistMovies.removeWhere((m) => m.tmdbId == movie.tmdbId);
+      _watchlistMovies = _watchlistMovies.where((m) => m.tmdbId != movie.tmdbId).toList();
       notifyListeners();
-      await repository.removeFromWatchlist(movie.tmdbId, userId);
+
+      try {
+        // Atualizado: em vez de remover o registro, atualizamos inWatchlist para false,
+        // preservando o status de assistido.
+        await repository.saveOrUpdateMovieInDb(
+          movie,
+          userId,
+          isWatched: isWatched(movie.tmdbId),
+          inWatchlist: false,
+        );
+      } catch (error) {
+        debugPrint('Erro ao remover da watchlist no Supabase: $error');
+        _watchlistMovies = previous; 
+        notifyListeners();
+        return false;
+      }
     } else {
-      _watchlistMovies.add(movie);
+      _watchlistMovies = [..._watchlistMovies, movie];
       notifyListeners();
-      await repository.saveOrUpdateMovieInDb(
-        movie,
-        userId,
-        isWatched: false,
-      );
+
+      try {
+        // Atualizado: Envia os estados de ambas as listas
+        await repository.saveOrUpdateMovieInDb(
+          movie,
+          userId,
+          isWatched: isWatched(movie.tmdbId),
+          inWatchlist: true,
+        );
+      } catch (error) {
+        debugPrint('Erro ao salvar na watchlist no Supabase: $error');
+        _watchlistMovies = previous; 
+        notifyListeners();
+        return false;
+      }
     }
+
+    await _refreshWatchlist();
+    return true;
   }
 
-  // ======================================================
-  // BUSCA DE FILMES
-  // ======================================================
+  Future<void> _refreshWatchlist() async {
+    final userId = _userId;
+    if (userId == null) return;
+
+    try {
+      _watchlistMovies = await repository.getWatchlistMovies(userId);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Erro ao re-buscar a watchlist: $e');
+    }
+  }
 
   Future<void> searchMovies(String query) async {
     if (query.trim().isEmpty) {
@@ -185,26 +276,35 @@ class MovieProvider extends ChangeNotifier {
     }
 
     _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
 
     try {
-      _searchResults = await repository.searchMovies(query);
-    } catch (_) {
-      _searchResults = [];
+      final results = await repository.searchMovies(query);
+
+      _searchResults = await Future.wait(
+        results.map((movie) async {
+          final full = await repository.getMovieById(
+            movie.tmdbId,
+            type: movie.type,
+            region: _userRegion,
+          );
+          return full ?? movie;
+        }),
+      );
+    } catch (e) {
+      _errorMessage = 'Erro na busca: $e';
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  // ======================================================
-  // LIMPEZA DE DADOS AO SAIR DA CONTA
-  // ======================================================
-
   void clear() {
     _watchedMovies = [];
     _watchlistMovies = [];
     _searchResults = [];
+    _userSubscriptions = ['Netflix', 'Amazon Prime Video', 'Max'];
     _errorMessage = null;
     notifyListeners();
   }

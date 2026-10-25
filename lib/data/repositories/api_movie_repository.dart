@@ -151,12 +151,25 @@ class ApiMovieRepository implements MovieRepository {
 
         if (mediaType == 'movie' || mediaType == 'tv') {
           moviesList.add(Movie.fromTmdbJson(item));
-        } else if (mediaType == 'person') {
-          final personName = item['name'] as String?;
-          final knownFor = item['known_for'] as List? ?? [];
-          for (var work in knownFor) {
-            moviesList
-                .add(Movie.fromTmdbJson(work, defaultDirector: personName));
+        } 
+        else if (mediaType == 'person') {
+          final int personId = item['id'];
+          final String personName = item['name'] ?? '';
+
+          final creditsUrl = Uri.parse(
+            '$_baseUrl/person/$personId/combined_credits?language=pt-BR&api_key=$_apiKey'
+          );
+          final creditsResponse = await http.get(creditsUrl);
+
+          if (creditsResponse.statusCode == 200) {
+            final creditsData = json.decode(creditsResponse.body);
+            final crewList = creditsData['crew'] as List;
+
+            final directedWorks = crewList.where((m) => m['job'] == 'Director').toList();
+
+            for (var work in directedWorks) {
+              moviesList.add(Movie.fromTmdbJson(work, defaultDirector: personName));
+            }
           }
         }
       }

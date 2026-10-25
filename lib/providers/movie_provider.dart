@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../data/models/movie_model.dart';
 import '../data/repositories/movie_repository.dart';
+import 'dart:async';
 
 class MovieProvider extends ChangeNotifier {
   final MovieRepository repository;
@@ -268,36 +269,46 @@ class MovieProvider extends ChangeNotifier {
     }
   }
 
+  Timer? _debounceTimer;
+
   Future<void> searchMovies(String query) async {
+    // Cancela a contagem anterior se o usuário continuar digitando
+    if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+
     if (query.trim().isEmpty) {
       _searchResults = [];
       notifyListeners();
       return;
     }
 
-    _isLoading = true;
-    _errorMessage = null;
-    notifyListeners();
-
-    try {
-      final results = await repository.searchMovies(query);
-
-      _searchResults = await Future.wait(
-        results.map((movie) async {
-          final full = await repository.getMovieById(
-            movie.tmdbId,
-            type: movie.type,
-            region: _userRegion,
-          );
-          return full ?? movie;
-        }),
-      );
-    } catch (e) {
-      _errorMessage = 'Erro na busca: $e';
-    } finally {
-      _isLoading = false;
+    // Aguarda 500 milissegundos após a última tecla pressionada antes de buscar
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () async {
+      _isLoading = true;
+      _errorMessage = null;
       notifyListeners();
-    }
+
+      try {
+        final results = await repository.searchMovies(query);
+
+        // Esta etapa já garante que os dados de streaming (assinaturas) 
+        // e tipo (filme/série) sejam carregados para os seus filtros funcionarem.
+        _searchResults = await Future.wait(
+          results.map((movie) async {
+            final full = await repository.getMovieById(
+              movie.tmdbId,
+              type: movie.type,
+              region: _userRegion,
+            );
+            return full ?? movie;
+          }),
+        );
+      } catch (e) {
+        _errorMessage = 'Erro na busca: $e';
+      } finally {
+        _isLoading = false;
+        notifyListeners();
+      }
+    });
   }
 
   void clear() {

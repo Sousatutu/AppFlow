@@ -8,6 +8,7 @@ import 'widgets/rate_movie_sheet.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'screens/settings_screen.dart';
 import 'widgets/add_to_list_sheet.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class MainNavScreen extends StatefulWidget {
   const MainNavScreen({super.key});
@@ -969,6 +970,7 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                                 child: _streamingChip(
                                   provider,
                                   isSubscribed: isSubscribed,
+                                  onTap: () => _openStreamingService(provider, movie.title)
                                 ),
                               );
                             }).toList(),
@@ -1212,42 +1214,82 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     );
   }
 
-  Widget _streamingChip(String provider, {bool isSubscribed = false}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 13,
-        vertical: 9,
-      ),
-      decoration: BoxDecoration(
-        color: isSubscribed
-            ? AppTheme.accent.withValues(alpha: 0.15)
-            : const Color(0xFF151E29),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: isSubscribed ? AppTheme.accent : const Color(0xFF26364A),
-          width: isSubscribed ? 1.5 : 1.0,
+  Widget _streamingChip(String provider, {bool isSubscribed = false, VoidCallback? onTap}) {
+    return InkWell(
+      onTap: onTap, // Ação de clique adicionada aqui
+      borderRadius: BorderRadius.circular(24),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 13,
+          vertical: 9,
+        ),
+        decoration: BoxDecoration(
+          color: isSubscribed
+              ? AppTheme.accent.withValues(alpha: 0.15)
+              : const Color(0xFF151E29),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isSubscribed ? AppTheme.accent : const Color(0xFF26364A),
+            width: isSubscribed ? 1.5 : 1.0,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isSubscribed ? Icons.check_circle : Icons.play_circle_outline,
+              color: AppTheme.accent,
+              size: 16,
+            ),
+            const SizedBox(width: 7),
+            Text(
+              provider,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isSubscribed ? FontWeight.bold : FontWeight.w600,
+                color: isSubscribed ? Colors.white : AppTheme.textPrimary,
+              ),
+            ),
+          ],
         ),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isSubscribed ? Icons.check_circle : Icons.play_circle_outline,
-            color: AppTheme.accent,
-            size: 16,
-          ),
-          const SizedBox(width: 7),
-          Text(
-            provider,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: isSubscribed ? FontWeight.bold : FontWeight.w600,
-              color: isSubscribed ? Colors.white : AppTheme.textPrimary,
-            ),
-          ),
-        ],
-      ),
     );
+  }
+
+  Future<void> _openStreamingService(String provider, String movieTitle) async {
+    final lowerProvider = provider.toLowerCase();
+    String urlStr;
+
+    // Constrói links de busca ou abertura para os principais serviços.
+    if (lowerProvider.contains('netflix')) {
+      urlStr = 'https://www.netflix.com/search?q=${Uri.encodeComponent(movieTitle)}';
+    } else if (lowerProvider.contains('prime') || lowerProvider.contains('amazon')) {
+      urlStr = 'https://www.primevideo.com/search/ref=atv_sr_sug_30?phrase=${Uri.encodeComponent(movieTitle)}';
+    } else if (lowerProvider.contains('max') || lowerProvider.contains('hbo')) {
+      urlStr = 'https://play.max.com/';
+    } else if (lowerProvider.contains('disney')) {
+      urlStr = 'https://www.disneyplus.com/';
+    } else if (lowerProvider.contains('apple')) {
+      urlStr = 'https://tv.apple.com/br/search?q=${Uri.encodeComponent(movieTitle)}';
+    } else if (lowerProvider.contains('globoplay')) {
+      urlStr = 'https://globoplay.globo.com/busca/?q=${Uri.encodeComponent(movieTitle)}';
+    } else {
+      // Fallback para pesquisa no Google caso seja um serviço não mapeado
+      urlStr = 'https://www.google.com/search?q=assistir+${Uri.encodeComponent(movieTitle)}+$provider';
+    }
+
+    final Uri url = Uri.parse(urlStr);
+    
+    // LaunchMode.externalApplication força a abertura no aplicativo nativo (se estiver instalado) ou no navegador.
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Não foi possível abrir o serviço $provider.')),
+        );
+      }
+    }
   }
 
   Future<void> _openRatingSheet(BuildContext context) async {
@@ -1302,7 +1344,7 @@ class _SearchTabState extends State<_SearchTab> {
     'Todos',
     'Filmes',
     'Séries',
-    'Diretores',
+    // 'Diretores',
     'Assinaturas',
   ];
 

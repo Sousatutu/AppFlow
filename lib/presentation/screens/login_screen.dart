@@ -28,7 +28,6 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLogin = true;
   bool _socialLoading = false;
 
-  // A função de navegação fica aqui.
   void _openRegisterScreen() {
     Navigator.push(
       context,
@@ -55,8 +54,6 @@ class _LoginScreenState extends State<LoginScreen> {
           password: _passwordController.text.trim(),
         );
 
-        // A navegação para o app é automática: o AuthGate (main.dart) detecta
-        // a nova sessão e exibe a MainNavScreen.
       } else {
         _openRegisterScreen();
       }
@@ -409,8 +406,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // Login social (Google/Apple) via OAuth do Supabase. Ao voltar para o app, o
-  // AuthGate detecta a sessão e abre a MainNavScreen.
   Future<void> _socialSignIn(Future<void> Function() signIn) async {
     if (_socialLoading) return;
     setState(() => _socialLoading = true);
@@ -429,7 +424,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// LOGOTIPO CIRCULAR
 class _EnicLogo extends StatelessWidget {
   const _EnicLogo();
 
@@ -441,65 +435,12 @@ class _EnicLogo extends StatelessWidget {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Container(
-            width: 76,
-            height: 76,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: AppTheme.accent,
-                width: 2.5,
-              ),
-            ),
-          ),
-          Container(
-            width: 26,
-            height: 26,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: AppTheme.accent,
-                width: 2,
-              ),
-            ),
-          ),
-          const Icon(
-            Icons.circle,
-            size: 9,
-            color: AppTheme.accent,
-          ),
-          const Positioned(
-            top: 9,
-            child: Icon(
-              Icons.circle,
-              size: 7,
-              color: AppTheme.accent,
-            ),
-          ),
-          const Positioned(
-            bottom: 9,
-            child: Icon(
-              Icons.circle,
-              size: 7,
-              color: AppTheme.accent,
-            ),
-          ),
-          const Positioned(
-            left: 9,
-            child: Icon(
-              Icons.circle,
-              size: 7,
-              color: AppTheme.accent,
-            ),
-          ),
-          const Positioned(
-            right: 9,
-            child: Icon(
-              Icons.circle,
-              size: 7,
-              color: AppTheme.accent,
-            ),
-          ),
+          Image.asset(
+            'assets/icon/enic_logo_transparent_bgr.png',
+            width: 140,
+            height: 140,
+            fit: BoxFit.contain,
+          )
         ],
       ),
     );
